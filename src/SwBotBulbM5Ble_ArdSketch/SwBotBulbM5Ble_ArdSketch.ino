@@ -1,36 +1,36 @@
-#include <M5Unified.h>
-#include <NimBLEDevice.h>
-#include <UNIT_8ENCODER.h> // Unit 8Encoderライブラリ
-#include "MyEnv.h"        // 機器固有の設定
-#include "SwitchBot_BulbBLE.h.h" // 汎用的なBLE設定
+#include <M5Unified.h>     // M5Unified by M5Stack v0.2.10 - https://github.com/m5stack/M5Unified
+#include <NimBLEDevice.h>  // NimBLE-Arduino by h2zero v2.3.6 - https://github.com/h2zero/NimBLE-Arduino
+#include <UNIT_8ENCODER.h> // M5Unit-8Encoder by M5Stack v0.0.1 - https://github.com/m5stack/M5Unit-8Encoder
+#include "MyEnv.h"         // Include your SwitchBot Color Bulb BLE MAC address
+#include "SwitchBot_BulbBLE.h" // SwitchBot Color Bulb API over BLE
 
-// --- グローバル変数 ---
+// --- Global Variables ---
 NimBLEClient* pClient = nullptr;
 bool connected = false;
-volatile bool connection_status_changed = true; // 起動時に画面を更新するためtrueで初期化
+volatile bool connection_status_changed = true; // Initialized as true to update display on startup
 
-// Unit 8Encoder関連
+// Unit 8Encoder related
 UNIT_8ENCODER sensor;
 uint8_t r_val = 255;
 uint8_t g_val = 255;
 uint8_t b_val = 255;
 
-// 明るさの段階設定
+// Brightness level settings
 const uint8_t brightness_levels[] = {1, 20, 40, 60, 80, 100};
 const int num_brightness_levels = sizeof(brightness_levels) / sizeof(brightness_levels[0]);
-int brightness_level_index = 5; // 初期値100%に対応するインデックス
+int brightness_level_index = 0; // Index corresponding to initial value of 100%
 uint8_t brightness_val = brightness_levels[brightness_level_index];
 
-// 各エンコーダーとボタンの前回の状態を保持
+// Previous states of encoders and buttons
 int32_t last_encoder_vals[4] = {0};
 bool last_button_states[8] = {true, true, true, true, true, true, true, true};
 unsigned long last_command_time = 0;
-const unsigned long COMMAND_INTERVAL = 100; // コマンド送信の間隔 (ms)
+const unsigned long COMMAND_INTERVAL = 100; // Interval between BLE commands (ms)
 
-// --- プロトタイプ宣言 ---
+// --- Function Prototypes ---
 void updateDisplay();
 
-// --- 接続コールバック ---
+// --- BLE Connection Callback ---
 class MyClientCallbacks : public NimBLEClientCallbacks {
     void onConnect(NimBLEClient* pClient) {
         connected = true;
@@ -42,23 +42,25 @@ class MyClientCallbacks : public NimBLEClientCallbacks {
     }
 };
 
-// --- 画面表示 ---
+// --- Display Update ---
 void updateDisplay() {
     M5.Lcd.fillScreen(BLACK);
     M5.Lcd.setCursor(0, 10);
     M5.Lcd.setTextFont(2);
-    // RGB値の表示
+
+    // Display RGB values
     M5.Lcd.setTextColor(TFT_RED);
     M5.Lcd.printf("R: %3d\n", r_val);
     M5.Lcd.setTextColor(TFT_GREEN);
     M5.Lcd.printf("G: %3d\n", g_val);
     M5.Lcd.setTextColor(TFT_BLUE);
     M5.Lcd.printf("B: %3d\n\n", b_val);
-    // 明るさの表示
+
+    // Display brightness
     M5.Lcd.setTextColor(TFT_YELLOW);
     M5.Lcd.printf("Brightness: %3d %%\n\n", brightness_val);
-    
-    // 接続状態の表示
+
+    // Display connection status
     M5.Lcd.setTextColor(TFT_WHITE);
     if (connected) {
         M5.Lcd.println("Status: Connected");
@@ -66,13 +68,13 @@ void updateDisplay() {
         M5.Lcd.println("Status: Disconnected");
     }
 
-    // 操作方法の表示
+    // Display control instructions
     M5.Lcd.setCursor(0, 160);
     M5.Lcd.println("CH5 Push: ON");
     M5.Lcd.println("CH6 Push: OFF");
 }
 
-// --- BLEコマンド送信 ---
+// --- BLE Command Transmission ---
 void sendCommand(const uint8_t* data, size_t size) {
     if (!connected || pClient == nullptr) return;
     NimBLERemoteService* pService = pClient->getService(SWITCHBOT_SERVICE_UUID);
@@ -88,52 +90,52 @@ void sendCommand(const std::vector<uint8_t>& command_vec) {
     sendCommand(command_vec.data(), command_vec.size());
 }
 
-// --- セットアップ ---
+// --- Setup ---
 void setup() {
     M5.begin();
     M5.Lcd.setTextFont(2);
-    // Unit 8Encoderの初期化
-    if (!sensor.begin(&Wire, 0x41, 32, 33, 100000UL)) {
-        M5.Lcd.fillScreen(BLACK);
-        M5.Lcd.setCursor(0,0);
-        M5.Lcd.println("8Encoder Init Failed!");
-        while(1) delay(100);
-    }
-    
-    // ★修正点: 関数名を setLedColor から setLEDColor に変更
-    sensor.setLEDColor(0, 0xFF0000); // CH1: Red
-    sensor.setLEDColor(1, 0x00FF00); // CH2: Green
-    sensor.setLEDColor(2, 0x0000FF); // CH3: Blue
-    sensor.setLEDColor(3, 0xFFFFFF); // CH4: White
-    for (int i = 4; i < 8; i++) {
-      sensor.setLEDColor(i, 0x000000); // CH5-8は消灯
+
+    // Initialize Unit 8Encoder
+    int ex_sda = M5.getPin(m5::ex_i2c_sda);
+    int ex_scl = M5.getPin(m5::ex_i2c_scl);
+    if (ex_sda >= 0 && ex_scl >= 0) {
+        sensor.begin(&Wire, ENCODER_ADDR, ex_sda, ex_scl);
+    } else {
+        sensor.begin(&Wire);
     }
 
-    // ★削除点: setIndicatorColor() はライブラリに存在しないため削除
+    sensor.setLEDColor(0, 0x110000); // CH1: Red
+    sensor.setLEDColor(1, 0x001100); // CH2: Green
+    sensor.setLEDColor(2, 0x000011); // CH3: Blue
+    sensor.setLEDColor(3, 0x111111); // CH4: White
+    for (int i = 4; i < 8; i++) {
+        sensor.setLEDColor(i, 0x000000); // CH5-CH8: Off
+    }
 
     updateDisplay();
-    // BLEの初期化
+
+    // Initialize BLE
     NimBLEDevice::init("");
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
 }
 
-
-// --- メインループ ---
+// --- Main Loop ---
 void loop() {
     M5.update();
-    // 接続状態が変化したら画面を更新
+
+    // Update display if connection status changed
     if (connection_status_changed) {
         updateDisplay();
         connection_status_changed = false;
     }
 
-    // BLE接続処理
+    // BLE connection handling
     if (!connected) {
         if (pClient != nullptr) {
             NimBLEDevice::deleteClient(pClient);
             pClient = nullptr;
         }
-        
+
         pClient = NimBLEDevice::createClient();
         pClient->setClientCallbacks(new MyClientCallbacks());
 
@@ -142,12 +144,12 @@ void loop() {
         delay(1000);
         return;
     }
-    
-    // --- 8Encoder入力処理 ---
+
+    // --- 8Encoder Input Handling ---
     bool rgb_changed = false;
     bool brightness_changed = false;
 
-    // エンコーダー (CH1-3: RGB)
+    // Encoders CH1-CH3: RGB
     for (int i = 0; i < 3; i++) {
         int32_t current_val = sensor.getEncoderValue(i);
         if (current_val != last_encoder_vals[i]) {
@@ -162,7 +164,7 @@ void loop() {
         }
     }
 
-    // エンコーダー (CH4: Brightness) 6段階制御
+    // Encoder CH4: Brightness (6 levels)
     int32_t current_bright_val = sensor.getEncoderValue(3);
     if (current_bright_val != last_encoder_vals[3]) {
         int32_t diff = current_bright_val - last_encoder_vals[3];
@@ -175,17 +177,16 @@ void loop() {
         }
 
         brightness_level_index = constrain(brightness_level_index, 0, num_brightness_levels - 1);
-        
         uint8_t new_brightness = brightness_levels[brightness_level_index];
 
         if (new_brightness != brightness_val) {
             brightness_val = new_brightness;
             brightness_changed = true;
-            // ★削除点: setIndicatorColor() はライブラリに存在しないため削除
+            // Note: setIndicatorColor() was removed because it does not exist in the library
         }
     }
-    
-    // コマンド送信
+
+    // Send BLE commands
     if ((rgb_changed || brightness_changed) && (millis() - last_command_time > COMMAND_INTERVAL)) {
         if (rgb_changed) {
             sendCommand(getSetRGBCommand(r_val, g_val, b_val));
@@ -198,13 +199,13 @@ void loop() {
         updateDisplay();
     }
 
-    // プッシュボタン (CH5: ON, CH6: OFF)
+    // Push buttons CH5: ON, CH6: OFF
     for (int i = 4; i < 6; i++) {
         bool current_state = sensor.getButtonStatus(i);
-        if (!current_state && last_button_states[i]) { // 押された瞬間
-            if (i == 4) { // CH5
+        if (!current_state && last_button_states[i]) { // Button pressed
+            if (i == 4) {
                 sendCommand(TURN_ON_COMMAND, TURN_ON_COMMAND_SIZE);
-            } else { // CH6
+            } else {
                 sendCommand(TURN_OFF_COMMAND, TURN_OFF_COMMAND_SIZE);
             }
             updateDisplay();
