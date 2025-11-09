@@ -110,6 +110,7 @@ void setup() {
     } else {
         sensor.begin(&Wire);
     }
+    delay(100);
 
     sensor.setLEDColor(0, 0x110000); // CH1: Red
     sensor.setLEDColor(1, 0x001100); // CH2: Green
