@@ -11,19 +11,17 @@ volatile bool connection_status_changed = true; // Initialized as true to update
 
 // Unit 8Encoder related
 UNIT_8ENCODER sensor;
-uint8_t r_val = 255;
-uint8_t g_val = 255;
-uint8_t b_val = 255;
+uint8_t r_val = 255; // Initial Red value
+uint8_t g_val = 255; // Initial Green value
+uint8_t b_val = 255; // Initial Blue value
 
-// Brightness level settings
-const uint8_t brightness_levels[] = {1, 20, 40, 60, 80, 100};
-const int num_brightness_levels = sizeof(brightness_levels) / sizeof(brightness_levels[0]);
-int brightness_level_index = 0; // Index corresponding to initial value of 100%
-uint8_t brightness_val = brightness_levels[brightness_level_index];
+// Brightness value (1-100)
+// Original stepped brightness control variables removed.
+uint8_t brightness_val = 100; // Initial brightness value set to 100%
 
 // Previous states of encoders and buttons
-int32_t last_encoder_vals[4] = {0};
-bool last_button_states[8] = {true, true, true, true, true, true, true, true};
+int32_t last_encoder_vals[4] = {0}; // Stores last values for CH1-CH4 encoders
+bool last_button_states[8] = {true, true, true, true, true, true, true, true}; // Stores last states for CH1-CH8 buttons
 unsigned long last_command_time = 0;
 const unsigned long COMMAND_INTERVAL = 100; // Interval between BLE commands (ms)
 
@@ -88,7 +86,8 @@ void sendCommand(const uint8_t* data, size_t size) {
     if (pService != nullptr) {
         NimBLERemoteCharacteristic* pCharacteristic = pService->getCharacteristic(SWITCHBOT_CHARACTER_UUID);
         if (pCharacteristic != nullptr) {
-            pCharacteristic->writeValue(data, size, true);
+            // pCharacteristic->writeValue(data, size, true);
+            pCharacteristic->writeValue(data, size, false);
         }
     }
 }
@@ -112,6 +111,7 @@ void setup() {
     }
     delay(100);
 
+    // Set LED colors for encoders
     sensor.setLEDColor(0, 0x110000); // CH1: Red
     sensor.setLEDColor(1, 0x001100); // CH2: Green
     sensor.setLEDColor(2, 0x000011); // CH3: Blue
@@ -157,41 +157,36 @@ void loop() {
     bool rgb_changed = false;
     bool brightness_changed = false;
 
-    // Encoders CH1-CH3: RGB
+    // Encoders CH1-CH3: RGB control
     for (int i = 0; i < 3; i++) {
         int32_t current_val = sensor.getEncoderValue(i);
         if (current_val != last_encoder_vals[i]) {
             int32_t diff = current_val - last_encoder_vals[i];
             last_encoder_vals[i] = current_val;
             switch (i) {
-                case 0: r_val = constrain(r_val + diff, 0, 255); break;
+                case 0: r_val = constrain(r_val + diff, 0, 255);
+                break;
                 case 1: g_val = constrain(g_val + diff, 0, 255); break;
-                case 2: b_val = constrain(b_val + diff, 0, 255); break;
+                case 2: b_val = constrain(b_val + diff, 0, 255);
+                break;
             }
             rgb_changed = true;
         }
     }
 
-    // Encoder CH4: Brightness (6 levels)
+    // Encoder CH4: Brightness (1-100), 1-step control
     int32_t current_bright_val = sensor.getEncoderValue(3);
     current_encoder_ch4_val = current_bright_val;   // debug
     if (current_bright_val != last_encoder_vals[3]) {
         int32_t diff = current_bright_val - last_encoder_vals[3];
         last_encoder_vals[3] = current_bright_val;
 
-        if (diff > 0) {
-            brightness_level_index++;
-        } else if (diff < 0) {
-            brightness_level_index--;
-        }
-
-        brightness_level_index = constrain(brightness_level_index, 0, num_brightness_levels - 1);
-        uint8_t new_brightness = brightness_levels[brightness_level_index];
+        // Update brightness by the difference, constrained to 1-100
+        uint8_t new_brightness = constrain(brightness_val + diff, 1, 100);
 
         if (new_brightness != brightness_val) {
             brightness_val = new_brightness;
             brightness_changed = true;
-            // Note: setIndicatorColor() was removed because it does not exist in the library
         }
     }
 
