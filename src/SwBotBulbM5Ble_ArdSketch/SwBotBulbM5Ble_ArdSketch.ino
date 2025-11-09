@@ -17,7 +17,7 @@ uint8_t b_val = 255; // Initial Blue value
 
 // Brightness value (1-100)
 // Original stepped brightness control variables removed.
-uint8_t brightness_val = 100; // Initial brightness value set to 100%
+uint8_t brightness_val = 1; // Initial brightness value set to 100%
 
 // Previous states of encoders and buttons
 int32_t last_encoder_vals[4] = {0}; // Stores last values for CH1-CH4 encoders
@@ -51,19 +51,20 @@ void updateDisplay() {
 
     // Display RGB values
     M5.Lcd.setTextColor(TFT_RED);
-    M5.Lcd.printf("R: %3d\n", r_val);
+    M5.Lcd.printf("R: %3d ", r_val);
     M5.Lcd.setTextColor(TFT_GREEN);
-    M5.Lcd.printf("G: %3d\n", g_val);
+    M5.Lcd.printf("G: %3d ", g_val);
     M5.Lcd.setTextColor(TFT_BLUE);
     M5.Lcd.printf("B: %3d\n\n", b_val);
 
     // Display brightness
+    M5.Lcd.setTextSize(2);
     M5.Lcd.setTextColor(TFT_YELLOW);
-    M5.Lcd.printf("Brightness: %3d %%\n\n", brightness_val);
-
+    M5.Lcd.printf("Brightness: %3d %%\n", brightness_val);
     // --- CH4 Encoder Value Display ---
     M5.Lcd.setTextColor(TFT_ORANGE);
-    M5.Lcd.printf("Enc CH4: %d\n\n", current_encoder_ch4_val);
+    M5.Lcd.printf("Enc CH4:  %d\n\n", current_encoder_ch4_val);
+    M5.Lcd.setTextSize(1);
 
     // Display connection status
     M5.Lcd.setTextColor(TFT_WHITE);
@@ -74,7 +75,7 @@ void updateDisplay() {
     }
 
     // Display control instructions
-    M5.Lcd.setCursor(0, 160);
+    // M5.Lcd.setCursor(0, 160);
     M5.Lcd.println("CH5 Push: ON");
     M5.Lcd.println("CH6 Push: OFF");
 }
