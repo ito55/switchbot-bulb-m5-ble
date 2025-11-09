@@ -27,6 +27,9 @@ bool last_button_states[8] = {true, true, true, true, true, true, true, true};
 unsigned long last_command_time = 0;
 const unsigned long COMMAND_INTERVAL = 100; // Interval between BLE commands (ms)
 
+// debug
+int32_t current_encoder_ch4_val = 0;
+
 // --- Function Prototypes ---
 void updateDisplay();
 
@@ -59,6 +62,10 @@ void updateDisplay() {
     // Display brightness
     M5.Lcd.setTextColor(TFT_YELLOW);
     M5.Lcd.printf("Brightness: %3d %%\n\n", brightness_val);
+
+    // --- CH4 Encoder Value Display ---
+    M5.Lcd.setTextColor(TFT_ORANGE);
+    M5.Lcd.printf("Enc CH4: %d\n\n", current_encoder_ch4_val);
 
     // Display connection status
     M5.Lcd.setTextColor(TFT_WHITE);
@@ -166,6 +173,7 @@ void loop() {
 
     // Encoder CH4: Brightness (6 levels)
     int32_t current_bright_val = sensor.getEncoderValue(3);
+    current_encoder_ch4_val = current_bright_val;   // debug
     if (current_bright_val != last_encoder_vals[3]) {
         int32_t diff = current_bright_val - last_encoder_vals[3];
         last_encoder_vals[3] = current_bright_val;
