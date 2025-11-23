@@ -49,43 +49,68 @@ MyClientCallbacks clientCallbacks;
 // --- Display Update ---
 void updateDisplay() {
     M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 10);
-    M5.Lcd.setTextFont(2);
+    M5.Lcd.setCursor(0, 0);
 
-    // Display RGB values
-    M5.Lcd.setTextColor(TFT_RED);
-    M5.Lcd.printf("R: %3d ", r_val);
-    M5.Lcd.setTextColor(TFT_GREEN);
-    M5.Lcd.printf("G: %3d ", g_val);
-    M5.Lcd.setTextColor(TFT_BLUE);
-    M5.Lcd.printf("B: %3d\n\n", b_val);
-
-    // Display brightness
-    M5.Lcd.setTextSize(2);
-    M5.Lcd.setTextColor(TFT_YELLOW);
-    M5.Lcd.printf("Brightness: %3d %%\n", brightness_val);
-    // --- CH4 Encoder Value Display ---
-    M5.Lcd.setTextColor(TFT_ORANGE);
-    M5.Lcd.printf("Enc CH4:  %d\n\n", current_encoder_ch4_val);
-    M5.Lcd.setTextSize(1);
-
-    // Display connection status
-    M5.Lcd.setTextColor(TFT_WHITE);
-    M5.Lcd.print("Status: ");
-    if (connected) {
-        M5.Lcd.setTextColor(TFT_GREEN);
-        M5.Lcd.println("Connected");
+    if (M5.getBoard() == m5::board_t::board_M5StickCPlus2) {
+        // Minimal display for M5StickCPlus2
+        M5.Lcd.setTextFont(2);
+        M5.Lcd.setTextSize(1);
+        
+        // Status
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.print("Status: ");
+        if (connected) {
+            M5.Lcd.setTextColor(TFT_GREEN);
+            M5.Lcd.println("Conn");
+        } else {
+            M5.Lcd.setTextColor(TFT_RED);
+            M5.Lcd.println("Disc");
+        }
+        
+        M5.Lcd.println("");
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.println("A: Bulb");
+        M5.Lcd.println("B: Conn");
     } else {
-        M5.Lcd.setTextColor(TFT_RED);
-        M5.Lcd.println("Disconnected");
-    }
+        // Original display for other boards
+        M5.Lcd.setCursor(0, 10);
+        M5.Lcd.setTextFont(2);
 
-    // Display control instructions
-    M5.Lcd.setTextColor(TFT_WHITE);
-    M5.Lcd.println("");
-    M5.Lcd.println("BtnA: Connect/Disconnect");
-    M5.Lcd.println("BtnB: -");
-    M5.Lcd.println("BtnC: Bulb On/Off");
+        // Display RGB values
+        M5.Lcd.setTextColor(TFT_RED);
+        M5.Lcd.printf("R: %3d ", r_val);
+        M5.Lcd.setTextColor(TFT_GREEN);
+        M5.Lcd.printf("G: %3d ", g_val);
+        M5.Lcd.setTextColor(TFT_BLUE);
+        M5.Lcd.printf("B: %3d\n\n", b_val);
+
+        // Display brightness
+        M5.Lcd.setTextSize(2);
+        M5.Lcd.setTextColor(TFT_YELLOW);
+        M5.Lcd.printf("Brightness: %3d %%\n", brightness_val);
+        // --- CH4 Encoder Value Display ---
+        M5.Lcd.setTextColor(TFT_ORANGE);
+        M5.Lcd.printf("Enc CH4:  %d\n\n", current_encoder_ch4_val);
+        M5.Lcd.setTextSize(1);
+
+        // Display connection status
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.print("Status: ");
+        if (connected) {
+            M5.Lcd.setTextColor(TFT_GREEN);
+            M5.Lcd.println("Connected");
+        } else {
+            M5.Lcd.setTextColor(TFT_RED);
+            M5.Lcd.println("Disconnected");
+        }
+
+        // Display control instructions
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.println("");
+        M5.Lcd.println("BtnA: Bulb On/Off");
+        M5.Lcd.println("BtnB: Connect/Disconnect");
+        M5.Lcd.println("BtnC: -");
+    }
 }
 
 // --- BLE Command Transmission ---
@@ -146,8 +171,18 @@ void loop() {
         connection_status_changed = false;
     }
 
-    // Button A: Connect / Disconnect (Toggle)
+    // Button A: Turn on/off switchbot color bulb (toggle)
     if (M5.BtnA.wasPressed()) {
+        bulb_on = !bulb_on;
+        if (bulb_on) {
+            sendCommand(TURN_ON_COMMAND, TURN_ON_COMMAND_SIZE);
+        } else {
+            sendCommand(TURN_OFF_COMMAND, TURN_OFF_COMMAND_SIZE);
+        }
+    }
+
+    // Button B: Connect / Disconnect (Toggle)
+    if (M5.BtnB.wasPressed()) {
         if (!connected) {
             M5.Lcd.println("Connecting...");
             
@@ -179,20 +214,9 @@ void loop() {
         }
     }
 
-    // Button B: No Assign
-    if (M5.BtnB.wasPressed()) {
-        // No action
-    }
-
-    // Button C: Turn on/off switchbot color bulb (toggle)
+    // Button C: No Assign
     if (M5.BtnC.wasPressed()) {
-        bulb_on = !bulb_on;
-        if (bulb_on) {
-            sendCommand(TURN_ON_COMMAND, TURN_ON_COMMAND_SIZE);
-        } else {
-            sendCommand(TURN_OFF_COMMAND, TURN_OFF_COMMAND_SIZE);
-        }
-        // Optional: Update display or show status if needed, but not requested explicitly other than toggle action
+        // No action
     }
 
     // --- 8Encoder Input Handling ---
