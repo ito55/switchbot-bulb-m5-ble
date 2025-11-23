@@ -8,7 +8,7 @@
 NimBLEClient* pClient = nullptr;
 bool connected = false;
 volatile bool connection_status_changed = true; // Initialized as true to update display on startup
-bool bulb_on = true; // Track bulb state, assume ON initially
+
 
 // Unit 8Encoder related
 UNIT_8ENCODER sensor;
@@ -173,12 +173,7 @@ void loop() {
 
     // Button A: Turn on/off switchbot color bulb (toggle)
     if (M5.BtnA.wasPressed()) {
-        bulb_on = !bulb_on;
-        if (bulb_on) {
-            sendCommand(TURN_ON_COMMAND, TURN_ON_COMMAND_SIZE);
-        } else {
-            sendCommand(TURN_OFF_COMMAND, TURN_OFF_COMMAND_SIZE);
-        }
+        sendCommand(TOGGLE_COMMAND, TOGGLE_COMMAND_SIZE);
     }
 
     // Button B: Connect / Disconnect (Toggle)
