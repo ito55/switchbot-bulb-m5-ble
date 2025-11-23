@@ -43,6 +43,8 @@ class MyClientCallbacks : public NimBLEClientCallbacks {
     }
 };
 
+MyClientCallbacks clientCallbacks;
+
 // --- Display Update ---
 void updateDisplay() {
     M5.Lcd.fillScreen(BLACK);
@@ -68,14 +70,20 @@ void updateDisplay() {
 
     // Display connection status
     M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.print("Status: ");
     if (connected) {
-        M5.Lcd.println("Status: Connected");
+        M5.Lcd.setTextColor(TFT_GREEN);
+        M5.Lcd.println("Connected");
     } else {
-        M5.Lcd.println("Status: Disconnected");
+        M5.Lcd.setTextColor(TFT_RED);
+        M5.Lcd.println("Disconnected");
     }
 
     // Display control instructions
-    // M5.Lcd.setCursor(0, 160);
+    M5.Lcd.setTextColor(TFT_WHITE);
+    M5.Lcd.println("");
+    M5.Lcd.println("BtnA: Connect");
+    M5.Lcd.println("BtnB: Disconnect");
     M5.Lcd.println("CH5 Push: ON");
     M5.Lcd.println("CH6 Push: OFF");
 }
@@ -138,20 +146,39 @@ void loop() {
         connection_status_changed = false;
     }
 
-    // BLE connection handling
-    if (!connected) {
-        if (pClient != nullptr) {
-            NimBLEDevice::deleteClient(pClient);
-            pClient = nullptr;
+    // Button A: Connect
+    if (M5.BtnA.wasPressed()) {
+        if (!connected) {
+            M5.Lcd.println("Connecting...");
+            
+            // Create client only if it doesn't exist
+            if (pClient == nullptr) {
+                pClient = NimBLEDevice::createClient();
+                pClient->setClientCallbacks(&clientCallbacks);
+            }
+
+            NimBLEAddress bulb_addr(SWITCHBOT_BULB_BLE_MAC, BLE_ADDR_PUBLIC);
+            if (pClient->connect(bulb_addr, false)) {
+                 // Connection successful, onConnect callback will handle status update
+            } else {
+                 // Connection failed
+                 M5.Lcd.println("Failed!");
+                 delay(1000);
+                 // Do not delete client, just retry next time
+                 updateDisplay(); // Refresh display to clear "Connecting..."
+            }
         }
+    }
 
-        pClient = NimBLEDevice::createClient();
-        pClient->setClientCallbacks(new MyClientCallbacks());
-
-        NimBLEAddress bulb_addr(SWITCHBOT_BULB_BLE_MAC, BLE_ADDR_PUBLIC);
-        pClient->connect(bulb_addr, false);
-        delay(1000);
-        return;
+    // Button B: Disconnect
+    if (M5.BtnB.wasPressed()) {
+        if (connected && pClient != nullptr) {
+            M5.Lcd.println("Disconnecting...");
+            pClient->disconnect();
+            // Force update state in case callback is missed or delayed
+            connected = false;
+            connection_status_changed = true;
+        }
     }
 
     // --- 8Encoder Input Handling ---
@@ -192,7 +219,7 @@ void loop() {
     }
 
     // Send BLE commands
-    if ((rgb_changed || brightness_changed) && (millis() - last_command_time > COMMAND_INTERVAL)) {
+    if (connected && (rgb_changed || brightness_changed) && (millis() - last_command_time > COMMAND_INTERVAL)) {
         if (rgb_changed) {
             sendCommand(getSetRGBCommand(r_val, g_val, b_val));
         }
@@ -201,6 +228,9 @@ void loop() {
             sendCommand(getSetBrightnessCommand(brightness_val));
         }
         last_command_time = millis();
+        updateDisplay();
+    } else if (rgb_changed || brightness_changed) {
+        // Update display even if not connected or interval not met, to show local values
         updateDisplay();
     }
 
