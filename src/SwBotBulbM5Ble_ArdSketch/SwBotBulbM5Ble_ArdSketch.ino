@@ -8,6 +8,7 @@
 NimBLEClient* pClient = nullptr;
 bool connected = false;
 volatile bool connection_status_changed = true; // Initialized as true to update display on startup
+bool bulb_on = true; // Track bulb state, assume ON initially
 
 // Unit 8Encoder related
 UNIT_8ENCODER sensor;
@@ -82,10 +83,9 @@ void updateDisplay() {
     // Display control instructions
     M5.Lcd.setTextColor(TFT_WHITE);
     M5.Lcd.println("");
-    M5.Lcd.println("BtnA: Connect");
-    M5.Lcd.println("BtnB: Disconnect");
-    M5.Lcd.println("CH5 Push: ON");
-    M5.Lcd.println("CH6 Push: OFF");
+    M5.Lcd.println("BtnA: Connect/Disconnect");
+    M5.Lcd.println("BtnB: -");
+    M5.Lcd.println("BtnC: Bulb On/Off");
 }
 
 // --- BLE Command Transmission ---
@@ -146,7 +146,7 @@ void loop() {
         connection_status_changed = false;
     }
 
-    // Button A: Connect
+    // Button A: Connect / Disconnect (Toggle)
     if (M5.BtnA.wasPressed()) {
         if (!connected) {
             M5.Lcd.println("Connecting...");
@@ -167,18 +167,32 @@ void loop() {
                  // Do not delete client, just retry next time
                  updateDisplay(); // Refresh display to clear "Connecting..."
             }
+        } else {
+            // Disconnect
+            if (pClient != nullptr) {
+                M5.Lcd.println("Disconnecting...");
+                pClient->disconnect();
+                // Force update state in case callback is missed or delayed
+                connected = false;
+                connection_status_changed = true;
+            }
         }
     }
 
-    // Button B: Disconnect
+    // Button B: No Assign
     if (M5.BtnB.wasPressed()) {
-        if (connected && pClient != nullptr) {
-            M5.Lcd.println("Disconnecting...");
-            pClient->disconnect();
-            // Force update state in case callback is missed or delayed
-            connected = false;
-            connection_status_changed = true;
+        // No action
+    }
+
+    // Button C: Turn on/off switchbot color bulb (toggle)
+    if (M5.BtnC.wasPressed()) {
+        bulb_on = !bulb_on;
+        if (bulb_on) {
+            sendCommand(TURN_ON_COMMAND, TURN_ON_COMMAND_SIZE);
+        } else {
+            sendCommand(TURN_OFF_COMMAND, TURN_OFF_COMMAND_SIZE);
         }
+        // Optional: Update display or show status if needed, but not requested explicitly other than toggle action
     }
 
     // --- 8Encoder Input Handling ---
@@ -234,7 +248,8 @@ void loop() {
         updateDisplay();
     }
 
-    // Push buttons CH5: ON, CH6: OFF
+    // Push buttons CH5/CH6: Removed as requested
+    /*
     for (int i = 4; i < 6; i++) {
         bool current_state = sensor.getButtonStatus(i);
         if (!current_state && last_button_states[i]) { // Button pressed
@@ -247,6 +262,7 @@ void loop() {
         }
         last_button_states[i] = current_state;
     }
+    */
 
     delay(20);
 }
