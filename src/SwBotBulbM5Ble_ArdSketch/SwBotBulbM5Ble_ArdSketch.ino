@@ -9,23 +9,29 @@ NimBLEClient* pClient = nullptr;
 bool connected = false;
 volatile bool connection_status_changed = true; // Initialized as true to update display on startup
 
+
 // Unit 8Encoder related
 UNIT_8ENCODER sensor;
-uint8_t r_val = 255;
-uint8_t g_val = 255;
-uint8_t b_val = 255;
+uint8_t r_val = 255; // Initial Red value
+uint8_t g_val = 255; // Initial Green value
+uint8_t b_val = 255; // Initial Blue value
 
-// Brightness level settings
-const uint8_t brightness_levels[] = {1, 20, 40, 60, 80, 100};
-const int num_brightness_levels = sizeof(brightness_levels) / sizeof(brightness_levels[0]);
-int brightness_level_index = 0; // Index corresponding to initial value of 100%
-uint8_t brightness_val = brightness_levels[brightness_level_index];
+// Brightness value (1-100)
+// Original stepped brightness control variables removed.
+uint8_t brightness_val = 1; // Initial brightness value set to 100%
 
 // Previous states of encoders and buttons
-int32_t last_encoder_vals[4] = {0};
-bool last_button_states[8] = {true, true, true, true, true, true, true, true};
+int32_t last_encoder_vals[4] = {0}; // Stores last values for CH1-CH4 encoders
+bool last_button_states[8] = {true, true, true, true, true, true, true, true}; // Stores last states for CH1-CH8 buttons
 unsigned long last_command_time = 0;
 const unsigned long COMMAND_INTERVAL = 100; // Interval between BLE commands (ms)
+
+// Encoder error handling
+unsigned long encoder_check_timestamp = 0;
+bool encoder_available = true;
+
+// debug
+int32_t current_encoder_ch4_val = 0;
 
 // --- Function Prototypes ---
 void updateDisplay();
@@ -42,36 +48,73 @@ class MyClientCallbacks : public NimBLEClientCallbacks {
     }
 };
 
+MyClientCallbacks clientCallbacks;
+
 // --- Display Update ---
 void updateDisplay() {
     M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 10);
-    M5.Lcd.setTextFont(2);
+    M5.Lcd.setCursor(0, 0);
 
-    // Display RGB values
-    M5.Lcd.setTextColor(TFT_RED);
-    M5.Lcd.printf("R: %3d\n", r_val);
-    M5.Lcd.setTextColor(TFT_GREEN);
-    M5.Lcd.printf("G: %3d\n", g_val);
-    M5.Lcd.setTextColor(TFT_BLUE);
-    M5.Lcd.printf("B: %3d\n\n", b_val);
-
-    // Display brightness
-    M5.Lcd.setTextColor(TFT_YELLOW);
-    M5.Lcd.printf("Brightness: %3d %%\n\n", brightness_val);
-
-    // Display connection status
-    M5.Lcd.setTextColor(TFT_WHITE);
-    if (connected) {
-        M5.Lcd.println("Status: Connected");
+    if (M5.getBoard() == m5::board_t::board_M5StickCPlus2) {
+        // Minimal display for M5StickCPlus2
+        M5.Lcd.setTextFont(2);
+        M5.Lcd.setTextSize(1);
+        
+        // Status
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.print("Status: ");
+        if (connected) {
+            M5.Lcd.setTextColor(TFT_GREEN);
+            M5.Lcd.println("Conn");
+        } else {
+            M5.Lcd.setTextColor(TFT_RED);
+            M5.Lcd.println("Disc");
+        }
+        
+        M5.Lcd.println("");
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.println("A: Bulb");
+        M5.Lcd.println("B: Conn");
     } else {
-        M5.Lcd.println("Status: Disconnected");
-    }
+        // Original display for other boards
+        M5.Lcd.setCursor(0, 10);
+        M5.Lcd.setTextFont(2);
 
-    // Display control instructions
-    M5.Lcd.setCursor(0, 160);
-    M5.Lcd.println("CH5 Push: ON");
-    M5.Lcd.println("CH6 Push: OFF");
+        // Display RGB values
+        M5.Lcd.setTextColor(TFT_RED);
+        M5.Lcd.printf("R: %3d ", r_val);
+        M5.Lcd.setTextColor(TFT_GREEN);
+        M5.Lcd.printf("G: %3d ", g_val);
+        M5.Lcd.setTextColor(TFT_BLUE);
+        M5.Lcd.printf("B: %3d\n\n", b_val);
+
+        // Display brightness
+        M5.Lcd.setTextSize(2);
+        M5.Lcd.setTextColor(TFT_YELLOW);
+        M5.Lcd.printf("Brightness: %3d %%\n", brightness_val);
+        // --- CH4 Encoder Value Display ---
+        M5.Lcd.setTextColor(TFT_ORANGE);
+        M5.Lcd.printf("Enc CH4:  %d\n\n", current_encoder_ch4_val);
+        M5.Lcd.setTextSize(1);
+
+        // Display connection status
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.print("Status: ");
+        if (connected) {
+            M5.Lcd.setTextColor(TFT_GREEN);
+            M5.Lcd.println("Connected");
+        } else {
+            M5.Lcd.setTextColor(TFT_RED);
+            M5.Lcd.println("Disconnected");
+        }
+
+        // Display control instructions
+        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.println("");
+        M5.Lcd.println("BtnA: Bulb On/Off");
+        M5.Lcd.println("BtnB: Connect/Disconnect");
+        M5.Lcd.println("BtnC: -");
+    }
 }
 
 // --- BLE Command Transmission ---
@@ -81,7 +124,8 @@ void sendCommand(const uint8_t* data, size_t size) {
     if (pService != nullptr) {
         NimBLERemoteCharacteristic* pCharacteristic = pService->getCharacteristic(SWITCHBOT_CHARACTER_UUID);
         if (pCharacteristic != nullptr) {
-            pCharacteristic->writeValue(data, size, true);
+            // pCharacteristic->writeValue(data, size, true);
+            pCharacteristic->writeValue(data, size, false);
         }
     }
 }
@@ -105,12 +149,23 @@ void setup() {
     }
     delay(100);
 
-    sensor.setLEDColor(0, 0x110000); // CH1: Red
-    sensor.setLEDColor(1, 0x001100); // CH2: Green
-    sensor.setLEDColor(2, 0x000011); // CH3: Blue
-    sensor.setLEDColor(3, 0x111111); // CH4: White
-    for (int i = 4; i < 8; i++) {
-        sensor.setLEDColor(i, 0x000000); // CH5-CH8: Off
+    // Set LED colors for encoders
+    // Check if encoder is connected before setting LEDs
+    Wire.beginTransmission(ENCODER_ADDR);
+    if (Wire.endTransmission() == 0) {
+        encoder_available = true;
+        // Set LED colors for encoders
+        sensor.setLEDColor(0, 0x110000); // CH1: Red
+        sensor.setLEDColor(1, 0x001100); // CH2: Green
+        sensor.setLEDColor(2, 0x000011); // CH3: Blue
+        sensor.setLEDColor(3, 0x111111); // CH4: White
+        for (int i = 4; i < 8; i++) {
+            sensor.setLEDColor(i, 0x000000); // CH5-CH8: Off
+        }
+    } else {
+        encoder_available = false;
+        encoder_check_timestamp = millis();
+        Serial.println("Unit Encoder not connected");
     }
 
     updateDisplay();
@@ -130,65 +185,112 @@ void loop() {
         connection_status_changed = false;
     }
 
-    // BLE connection handling
-    if (!connected) {
-        if (pClient != nullptr) {
-            NimBLEDevice::deleteClient(pClient);
-            pClient = nullptr;
+    // Button A: Turn on/off switchbot color bulb (toggle)
+    if (M5.BtnA.wasPressed()) {
+        sendCommand(TOGGLE_COMMAND, TOGGLE_COMMAND_SIZE);
+    }
+
+    // Button B: Connect / Disconnect (Toggle)
+    if (M5.BtnB.wasPressed()) {
+        if (!connected) {
+            M5.Lcd.println("Connecting...");
+            
+            // Create client only if it doesn't exist
+            if (pClient == nullptr) {
+                pClient = NimBLEDevice::createClient();
+                pClient->setClientCallbacks(&clientCallbacks);
+            }
+
+            NimBLEAddress bulb_addr(SWITCHBOT_BULB_BLE_MAC, BLE_ADDR_PUBLIC);
+            if (pClient->connect(bulb_addr, false)) {
+                 // Connection successful, onConnect callback will handle status update
+            } else {
+                 // Connection failed
+                 M5.Lcd.println("Failed!");
+                 delay(1000);
+                 // Do not delete client, just retry next time
+                 updateDisplay(); // Refresh display to clear "Connecting..."
+            }
+        } else {
+            // Disconnect
+            if (pClient != nullptr) {
+                M5.Lcd.println("Disconnecting...");
+                pClient->disconnect();
+                // Force update state in case callback is missed or delayed
+                connected = false;
+                connection_status_changed = true;
+            }
         }
+    }
 
-        pClient = NimBLEDevice::createClient();
-        pClient->setClientCallbacks(new MyClientCallbacks());
-
-        NimBLEAddress bulb_addr(SWITCHBOT_BULB_BLE_MAC, BLE_ADDR_PUBLIC);
-        pClient->connect(bulb_addr, false);
-        delay(1000);
-        return;
+    // Button C: No Assign
+    if (M5.BtnC.wasPressed()) {
+        // No action
     }
 
     // --- 8Encoder Input Handling ---
     bool rgb_changed = false;
     bool brightness_changed = false;
 
-    // Encoders CH1-CH3: RGB
-    for (int i = 0; i < 3; i++) {
-        int32_t current_val = sensor.getEncoderValue(i);
-        if (current_val != last_encoder_vals[i]) {
-            int32_t diff = current_val - last_encoder_vals[i];
-            last_encoder_vals[i] = current_val;
-            switch (i) {
-                case 0: r_val = constrain(r_val + diff, 0, 255); break;
-                case 1: g_val = constrain(g_val + diff, 0, 255); break;
-                case 2: b_val = constrain(b_val + diff, 0, 255); break;
+    // Check if encoder is available or in retry cooldown
+    if (!encoder_available) {
+        if (millis() - encoder_check_timestamp > 1000) {
+            // Retry checking for encoder
+            Wire.beginTransmission(ENCODER_ADDR);
+            if (Wire.endTransmission() == 0) {
+                encoder_available = true;
+            } else {
+                encoder_check_timestamp = millis();
+                Serial.println("Unit Encoder not connected");
             }
-            rgb_changed = true;
         }
     }
 
-    // Encoder CH4: Brightness (6 levels)
-    int32_t current_bright_val = sensor.getEncoderValue(3);
-    if (current_bright_val != last_encoder_vals[3]) {
-        int32_t diff = current_bright_val - last_encoder_vals[3];
-        last_encoder_vals[3] = current_bright_val;
+    if (encoder_available) {
+        // Verify connection before accessing to prevent I2C error spam
+        Wire.beginTransmission(ENCODER_ADDR);
+        if (Wire.endTransmission() != 0) {
+            encoder_available = false;
+            encoder_check_timestamp = millis();
+            Serial.println("Unit Encoder not connected");
+        } else {
+            // Encoders CH1-CH3: RGB control
+            for (int i = 0; i < 3; i++) {
+                int32_t current_val = sensor.getEncoderValue(i);
+                if (current_val != last_encoder_vals[i]) {
+                    int32_t diff = current_val - last_encoder_vals[i];
+                    last_encoder_vals[i] = current_val;
+                    switch (i) {
+                        case 0: r_val = constrain(r_val + diff, 0, 255);
+                        break;
+                        case 1: g_val = constrain(g_val + diff, 0, 255); break;
+                        case 2: b_val = constrain(b_val + diff, 0, 255);
+                        break;
+                    }
+                    rgb_changed = true;
+                }
+            }
 
-        if (diff > 0) {
-            brightness_level_index++;
-        } else if (diff < 0) {
-            brightness_level_index--;
-        }
+            // Encoder CH4: Brightness (1-100), 1-step control
+            int32_t current_bright_val = sensor.getEncoderValue(3);
+            current_encoder_ch4_val = current_bright_val;   // debug
+            if (current_bright_val != last_encoder_vals[3]) {
+                int32_t diff = current_bright_val - last_encoder_vals[3];
+                last_encoder_vals[3] = current_bright_val;
 
-        brightness_level_index = constrain(brightness_level_index, 0, num_brightness_levels - 1);
-        uint8_t new_brightness = brightness_levels[brightness_level_index];
+                // Update brightness by the difference, constrained to 1-100
+                uint8_t new_brightness = constrain(brightness_val + diff, 1, 100);
 
-        if (new_brightness != brightness_val) {
-            brightness_val = new_brightness;
-            brightness_changed = true;
-            // Note: setIndicatorColor() was removed because it does not exist in the library
+                if (new_brightness != brightness_val) {
+                    brightness_val = new_brightness;
+                    brightness_changed = true;
+                }
+            }
         }
     }
 
     // Send BLE commands
-    if ((rgb_changed || brightness_changed) && (millis() - last_command_time > COMMAND_INTERVAL)) {
+    if (connected && (rgb_changed || brightness_changed) && (millis() - last_command_time > COMMAND_INTERVAL)) {
         if (rgb_changed) {
             sendCommand(getSetRGBCommand(r_val, g_val, b_val));
         }
@@ -198,9 +300,13 @@ void loop() {
         }
         last_command_time = millis();
         updateDisplay();
+    } else if (rgb_changed || brightness_changed) {
+        // Update display even if not connected or interval not met, to show local values
+        updateDisplay();
     }
 
-    // Push buttons CH5: ON, CH6: OFF
+    // Push buttons CH5/CH6: Removed as requested
+    /*
     for (int i = 4; i < 6; i++) {
         bool current_state = sensor.getButtonStatus(i);
         if (!current_state && last_button_states[i]) { // Button pressed
@@ -213,6 +319,7 @@ void loop() {
         }
         last_button_states[i] = current_state;
     }
+    */
 
     delay(20);
 }

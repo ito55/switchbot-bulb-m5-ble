@@ -15,6 +15,9 @@ inline const size_t TURN_ON_COMMAND_SIZE = sizeof(TURN_ON_COMMAND);
 inline const uint8_t TURN_OFF_COMMAND[] = {0x57, 0x0F, 0x47, 0x01, 0x02};
 inline const size_t TURN_OFF_COMMAND_SIZE = sizeof(TURN_OFF_COMMAND);
 
+inline const uint8_t TOGGLE_COMMAND[] = {0x57, 0x0F, 0x47, 0x01, 0x03};
+inline const size_t TOGGLE_COMMAND_SIZE = sizeof(TOGGLE_COMMAND);
+
 /**
  * @brief Generates the command to set RGB values.
  * @param r Red value (0-255)
