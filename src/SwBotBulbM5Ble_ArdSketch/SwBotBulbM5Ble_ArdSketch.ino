@@ -26,6 +26,10 @@ bool last_button_states[8] = {true, true, true, true, true, true, true, true}; /
 unsigned long last_command_time = 0;
 const unsigned long COMMAND_INTERVAL = 100; // Interval between BLE commands (ms)
 
+// Encoder error handling
+unsigned long encoder_check_timestamp = 0;
+bool encoder_available = true;
+
 // debug
 int32_t current_encoder_ch4_val = 0;
 
@@ -146,12 +150,22 @@ void setup() {
     delay(100);
 
     // Set LED colors for encoders
-    sensor.setLEDColor(0, 0x110000); // CH1: Red
-    sensor.setLEDColor(1, 0x001100); // CH2: Green
-    sensor.setLEDColor(2, 0x000011); // CH3: Blue
-    sensor.setLEDColor(3, 0x111111); // CH4: White
-    for (int i = 4; i < 8; i++) {
-        sensor.setLEDColor(i, 0x000000); // CH5-CH8: Off
+    // Check if encoder is connected before setting LEDs
+    Wire.beginTransmission(ENCODER_ADDR);
+    if (Wire.endTransmission() == 0) {
+        encoder_available = true;
+        // Set LED colors for encoders
+        sensor.setLEDColor(0, 0x110000); // CH1: Red
+        sensor.setLEDColor(1, 0x001100); // CH2: Green
+        sensor.setLEDColor(2, 0x000011); // CH3: Blue
+        sensor.setLEDColor(3, 0x111111); // CH4: White
+        for (int i = 4; i < 8; i++) {
+            sensor.setLEDColor(i, 0x000000); // CH5-CH8: Off
+        }
+    } else {
+        encoder_available = false;
+        encoder_check_timestamp = millis();
+        Serial.println("Unit Encoder not connected");
     }
 
     updateDisplay();
@@ -218,36 +232,60 @@ void loop() {
     bool rgb_changed = false;
     bool brightness_changed = false;
 
-    // Encoders CH1-CH3: RGB control
-    for (int i = 0; i < 3; i++) {
-        int32_t current_val = sensor.getEncoderValue(i);
-        if (current_val != last_encoder_vals[i]) {
-            int32_t diff = current_val - last_encoder_vals[i];
-            last_encoder_vals[i] = current_val;
-            switch (i) {
-                case 0: r_val = constrain(r_val + diff, 0, 255);
-                break;
-                case 1: g_val = constrain(g_val + diff, 0, 255); break;
-                case 2: b_val = constrain(b_val + diff, 0, 255);
-                break;
+    // Check if encoder is available or in retry cooldown
+    if (!encoder_available) {
+        if (millis() - encoder_check_timestamp > 1000) {
+            // Retry checking for encoder
+            Wire.beginTransmission(ENCODER_ADDR);
+            if (Wire.endTransmission() == 0) {
+                encoder_available = true;
+            } else {
+                encoder_check_timestamp = millis();
+                Serial.println("Unit Encoder not connected");
             }
-            rgb_changed = true;
         }
     }
 
-    // Encoder CH4: Brightness (1-100), 1-step control
-    int32_t current_bright_val = sensor.getEncoderValue(3);
-    current_encoder_ch4_val = current_bright_val;   // debug
-    if (current_bright_val != last_encoder_vals[3]) {
-        int32_t diff = current_bright_val - last_encoder_vals[3];
-        last_encoder_vals[3] = current_bright_val;
+    if (encoder_available) {
+        // Verify connection before accessing to prevent I2C error spam
+        Wire.beginTransmission(ENCODER_ADDR);
+        if (Wire.endTransmission() != 0) {
+            encoder_available = false;
+            encoder_check_timestamp = millis();
+            Serial.println("Unit Encoder not connected");
+        } else {
+            // Encoders CH1-CH3: RGB control
+            for (int i = 0; i < 3; i++) {
+                int32_t current_val = sensor.getEncoderValue(i);
+                if (current_val != last_encoder_vals[i]) {
+                    int32_t diff = current_val - last_encoder_vals[i];
+                    last_encoder_vals[i] = current_val;
+                    switch (i) {
+                        case 0: r_val = constrain(r_val + diff, 0, 255);
+                        break;
+                        case 1: g_val = constrain(g_val + diff, 0, 255); break;
+                        case 2: b_val = constrain(b_val + diff, 0, 255);
+                        break;
+                    }
+                    rgb_changed = true;
+                }
+            }
 
-        // Update brightness by the difference, constrained to 1-100
-        uint8_t new_brightness = constrain(brightness_val + diff, 1, 100);
+            // Encoder CH4: Brightness (1-100), 1-step control
+            int32_t current_bright_val = sensor.getEncoderValue(3);
+            current_encoder_ch4_val = current_bright_val;   // debug
+            if (current_bright_val != last_encoder_vals[3]) {
+                int32_t diff = current_bright_val - last_encoder_vals[3];
+                last_encoder_vals[3] = current_bright_val;
 
-        if (new_brightness != brightness_val) {
-            brightness_val = new_brightness;
-            brightness_changed = true;
+                // Update brightness by the difference, constrained to 1-100
+                uint8_t new_brightness = constrain(brightness_val + diff, 1, 100);
+
+                if (new_brightness != brightness_val) {
+                    brightness_val = new_brightness;
+                    brightness_changed = true;
+                }
+            }
         }
     }
 
