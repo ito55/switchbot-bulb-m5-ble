@@ -35,7 +35,8 @@ unsigned long encoder_check_timestamp = 0;
 bool encoder_available = true;
 
 // debug
-int32_t current_encoder_ch4_val = 0;
+// debug
+// int32_t current_encoder_ch4_val = 0; // Removed debug variable
 
 // --- Function Prototypes ---
 // --- Function Prototypes ---
@@ -100,13 +101,8 @@ void updateDisplay(bool full_redraw) {
         M5.Lcd.printf("B: %3d\n\n", b_val);
 
         // Display brightness
-        M5.Lcd.setTextSize(2);
         M5.Lcd.setTextColor(TFT_YELLOW, BLACK);
-        M5.Lcd.printf("Brightness: %3d %%\n", brightness_val);
-        // --- CH4 Encoder Value Display ---
-        M5.Lcd.setTextColor(TFT_ORANGE, BLACK);
-        M5.Lcd.printf("Enc CH4:  %d\n\n", current_encoder_ch4_val);
-        M5.Lcd.setTextSize(1);
+        M5.Lcd.printf("Brightness: %3d %%\n\n", brightness_val);
 
         // Display connection status
         M5.Lcd.setTextColor(TFT_WHITE, BLACK);
@@ -286,7 +282,7 @@ void loop() {
 
             // Encoder CH4: Brightness (1-100), 1-step control
             int32_t current_bright_val = sensor.getEncoderValue(3);
-            current_encoder_ch4_val = current_bright_val;   // debug
+            // current_encoder_ch4_val = current_bright_val;   // debug removed
             if (current_bright_val != last_encoder_vals[3]) {
                 int32_t diff = current_bright_val - last_encoder_vals[3];
                 last_encoder_vals[3] = current_bright_val;
