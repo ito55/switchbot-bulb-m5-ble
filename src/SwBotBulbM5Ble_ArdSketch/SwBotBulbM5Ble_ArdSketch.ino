@@ -24,17 +24,23 @@ uint8_t brightness_val = 1; // Initial brightness value set to 100%
 int32_t last_encoder_vals[4] = {0}; // Stores last values for CH1-CH4 encoders
 bool last_button_states[8] = {true, true, true, true, true, true, true, true}; // Stores last states for CH1-CH8 buttons
 unsigned long last_command_time = 0;
-const unsigned long COMMAND_INTERVAL = 100; // Interval between BLE commands (ms)
+const unsigned long COMMAND_INTERVAL = 200; // Interval between BLE commands (ms)
+
+// Dirty flags for delayed transmission
+bool rgb_dirty = false;
+bool brightness_dirty = false;
 
 // Encoder error handling
 unsigned long encoder_check_timestamp = 0;
 bool encoder_available = true;
 
 // debug
-int32_t current_encoder_ch4_val = 0;
+// debug
+// int32_t current_encoder_ch4_val = 0; // Removed debug variable
 
 // --- Function Prototypes ---
-void updateDisplay();
+// --- Function Prototypes ---
+void updateDisplay(bool full_redraw = false);
 
 // --- BLE Connection Callback ---
 class MyClientCallbacks : public NimBLEClientCallbacks {
@@ -51,9 +57,12 @@ class MyClientCallbacks : public NimBLEClientCallbacks {
 MyClientCallbacks clientCallbacks;
 
 // --- Display Update ---
-void updateDisplay() {
-    M5.Lcd.fillScreen(BLACK);
-    M5.Lcd.setCursor(0, 0);
+// --- Display Update ---
+void updateDisplay(bool full_redraw) {
+    if (full_redraw) {
+        M5.Lcd.fillScreen(BLACK);
+        M5.Lcd.setCursor(0, 0);
+    }
 
     if (M5.getBoard() == m5::board_t::board_M5StickCPlus2) {
         // Minimal display for M5StickCPlus2
@@ -61,59 +70,57 @@ void updateDisplay() {
         M5.Lcd.setTextSize(1);
         
         // Status
-        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.setCursor(0, 0);
+        M5.Lcd.setTextColor(TFT_WHITE, BLACK);
         M5.Lcd.print("Status: ");
         if (connected) {
-            M5.Lcd.setTextColor(TFT_GREEN);
+            M5.Lcd.setTextColor(TFT_GREEN, BLACK);
             M5.Lcd.println("Conn");
         } else {
-            M5.Lcd.setTextColor(TFT_RED);
+            M5.Lcd.setTextColor(TFT_RED, BLACK);
             M5.Lcd.println("Disc");
         }
         
         M5.Lcd.println("");
-        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.setTextColor(TFT_WHITE, BLACK);
         M5.Lcd.println("A: Bulb");
         M5.Lcd.println("B: Conn");
     } else {
         // Original display for other boards
-        M5.Lcd.setCursor(0, 10);
+        if (full_redraw) M5.Lcd.setCursor(0, 10);
+        else M5.Lcd.setCursor(0, 10); // Reset cursor for overwrite
+        
         M5.Lcd.setTextFont(2);
 
         // Display RGB values
-        M5.Lcd.setTextColor(TFT_RED);
+        M5.Lcd.setTextColor(TFT_RED, BLACK);
         M5.Lcd.printf("R: %3d ", r_val);
-        M5.Lcd.setTextColor(TFT_GREEN);
+        M5.Lcd.setTextColor(TFT_GREEN, BLACK);
         M5.Lcd.printf("G: %3d ", g_val);
-        M5.Lcd.setTextColor(TFT_BLUE);
+        M5.Lcd.setTextColor(TFT_BLUE, BLACK);
         M5.Lcd.printf("B: %3d\n\n", b_val);
 
         // Display brightness
-        M5.Lcd.setTextSize(2);
-        M5.Lcd.setTextColor(TFT_YELLOW);
-        M5.Lcd.printf("Brightness: %3d %%\n", brightness_val);
-        // --- CH4 Encoder Value Display ---
-        M5.Lcd.setTextColor(TFT_ORANGE);
-        M5.Lcd.printf("Enc CH4:  %d\n\n", current_encoder_ch4_val);
-        M5.Lcd.setTextSize(1);
+        M5.Lcd.setTextColor(TFT_YELLOW, BLACK);
+        M5.Lcd.printf("Brightness: %3d %%\n\n", brightness_val);
 
         // Display connection status
-        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.setTextColor(TFT_WHITE, BLACK);
         M5.Lcd.print("Status: ");
         if (connected) {
-            M5.Lcd.setTextColor(TFT_GREEN);
-            M5.Lcd.println("Connected");
+            M5.Lcd.setTextColor(TFT_GREEN, BLACK);
+            M5.Lcd.println("Connected   "); // Extra spaces to clear "Disconnected"
         } else {
-            M5.Lcd.setTextColor(TFT_RED);
+            M5.Lcd.setTextColor(TFT_RED, BLACK);
             M5.Lcd.println("Disconnected");
         }
 
         // Display control instructions
-        M5.Lcd.setTextColor(TFT_WHITE);
+        M5.Lcd.setTextColor(TFT_WHITE, BLACK);
         M5.Lcd.println("");
-        M5.Lcd.println("BtnA: Bulb On/Off");
+        M5.Lcd.println("BtnA: Bulb On/Off       ");
         M5.Lcd.println("BtnB: Connect/Disconnect");
-        M5.Lcd.println("BtnC: -");
+        M5.Lcd.println("BtnC: -                 ");
     }
 }
 
@@ -168,7 +175,7 @@ void setup() {
         Serial.println("Unit Encoder not connected");
     }
 
-    updateDisplay();
+    updateDisplay(true);
 
     // Initialize BLE
     NimBLEDevice::init("");
@@ -181,7 +188,7 @@ void loop() {
 
     // Update display if connection status changed
     if (connection_status_changed) {
-        updateDisplay();
+        updateDisplay(true); // Full redraw on status change
         connection_status_changed = false;
     }
 
@@ -209,7 +216,8 @@ void loop() {
                  M5.Lcd.println("Failed!");
                  delay(1000);
                  // Do not delete client, just retry next time
-                 updateDisplay(); // Refresh display to clear "Connecting..."
+                 // Do not delete client, just retry next time
+                 updateDisplay(true); // Refresh display to clear "Connecting..."
             }
         } else {
             // Disconnect
@@ -229,8 +237,8 @@ void loop() {
     }
 
     // --- 8Encoder Input Handling ---
-    bool rgb_changed = false;
-    bool brightness_changed = false;
+    // Removed local changed flags in favor of global dirty flags
+    bool display_needed = false; // Local flag to trigger display update
 
     // Check if encoder is available or in retry cooldown
     if (!encoder_available) {
@@ -267,13 +275,14 @@ void loop() {
                         case 2: b_val = constrain(b_val + diff, 0, 255);
                         break;
                     }
-                    rgb_changed = true;
+                    rgb_dirty = true;
+                    display_needed = true;
                 }
             }
 
             // Encoder CH4: Brightness (1-100), 1-step control
             int32_t current_bright_val = sensor.getEncoderValue(3);
-            current_encoder_ch4_val = current_bright_val;   // debug
+            // current_encoder_ch4_val = current_bright_val;   // debug removed
             if (current_bright_val != last_encoder_vals[3]) {
                 int32_t diff = current_bright_val - last_encoder_vals[3];
                 last_encoder_vals[3] = current_bright_val;
@@ -283,26 +292,37 @@ void loop() {
 
                 if (new_brightness != brightness_val) {
                     brightness_val = new_brightness;
-                    brightness_changed = true;
+                    brightness_dirty = true;
+                    display_needed = true;
                 }
             }
         }
     }
 
-    // Send BLE commands
-    if (connected && (rgb_changed || brightness_changed) && (millis() - last_command_time > COMMAND_INTERVAL)) {
-        if (rgb_changed) {
+    // Send BLE commands if dirty and interval passed
+    if (connected && (rgb_dirty || brightness_dirty) && (millis() - last_command_time > COMMAND_INTERVAL)) {
+        if (rgb_dirty) {
             sendCommand(getSetRGBCommand(r_val, g_val, b_val));
+            rgb_dirty = false;
         }
-        if (rgb_changed && brightness_changed) delay(50);
-        if (brightness_changed) {
+        if (rgb_dirty && brightness_dirty) delay(50); // Small delay if sending both
+        if (brightness_dirty) {
             sendCommand(getSetBrightnessCommand(brightness_val));
+            brightness_dirty = false;
         }
         last_command_time = millis();
-        updateDisplay();
-    } else if (rgb_changed || brightness_changed) {
-        // Update display even if not connected or interval not met, to show local values
-        updateDisplay();
+        // Display update is handled below if needed, or we can force it here if we want to show "sent" status
+    } 
+    
+    // Handle Disconnected State: Clear dirty flags immediately to prevent stuck state
+    if (!connected && (rgb_dirty || brightness_dirty)) {
+        rgb_dirty = false;
+        brightness_dirty = false;
+        display_needed = true; // Ensure we show the new local value
+    }
+
+    if (display_needed) {
+        updateDisplay(false); // Partial update
     }
 
     // Push buttons CH5/CH6: Removed as requested
